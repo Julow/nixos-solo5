@@ -70,13 +70,14 @@ let
     };
   };
 
-  mk_service = { name, bin, ipv4, ports, mem, argv }@u:
+  services = listToAttrs (map_unikernels (i:
+    { name, bin, ipv4, ports, mem, argv }@u:
     let
       ipv4_args = [
         "--ipv4=${ipv4}/${toString conf.ipv4.subnet}"
         "--ipv4-gateway=${conf.ipv4.gateway}"
       ];
-      nets = map ({ intf, ... }@p: [ "--net:${intf}=tap1" ]) ports;
+      nets = map ({ intf, ... }@p: [ "--net:${intf}=${tap i}" ]) ports;
       # TODO: Block devices: --block:$name=$block_file_dev
       # (optional) --block-sector-size:$name=$size
       blocks = [ ];
@@ -99,9 +100,16 @@ let
         ProtectSystem = "full";
         ProtectHome = true;
       };
-    };
+    }));
 
-  mk_forward_ports = { ipv4, ports, ... }:
+  # Name of the tap device for a unikernel ID.
+  tap = i: "tap${toString i}";
+
+  # Apply [f] for every unikernels passing the implicit unikernel id.
+  map_unikernels = f: imap1 f unikernels;
+
+  port_forwards = concatLists (map_unikernels (_:
+    { ipv4, ports, ... }:
     concatMap ({ port, intf, proto, exposed_port }:
       if exposed_port == null then
         [ ]
@@ -109,7 +117,27 @@ let
         destination = "${ipv4}:${toString port}";
         sourcePort = exposed_port;
         inherit proto;
-      }]) ports;
+      }]) ports));
+
+  tap_devices = listToAttrs (map_unikernels (i: _:
+    let name = tap i;
+    in nameValuePair name {
+      netdevConfig = {
+        Name = name;
+        Kind = "tap";
+      };
+      tapConfig = {
+        User = "solo5";
+        Group = "solo5";
+      };
+    }));
+
+  tap_networks = listToAttrs (map_unikernels (i: _:
+    let name = tap i;
+    in nameValuePair name {
+      bridge = [ "service" ];
+      matchConfig = { Name = name; };
+    }));
 
   conf = config.solo5;
 
@@ -150,44 +178,30 @@ in {
     # TODO: Assert that each ip adress is unique
     # TODO: Assert that each ports of each unikernel is uniquely named
 
-    systemd.services = listToAttrs (map mk_service unikernels);
+    systemd.services = services;
 
     # Network interface
     networking.nat = {
       enable = true;
       internalInterfaces = [ "service" ];
       externalInterface = "eth0";
-      forwardPorts = concatMap mk_forward_ports unikernels;
+      forwardPorts = port_forwards;
     };
 
     systemd.network.enable = true;
 
-    systemd.network.networks.service = {
-      address = [ "${conf.ipv4.gateway}/${toString conf.ipv4.subnet}" ];
-      matchConfig = { Name = "service"; };
+    systemd.network.networks = tap_networks // {
+      service = {
+        address = [ "${conf.ipv4.gateway}/${toString conf.ipv4.subnet}" ];
+        matchConfig = { Name = "service"; };
+      };
     };
 
-    systemd.network.networks.tap1 = {
-      bridge = [ "service" ];
-      matchConfig = { Name = "tap1"; };
-    };
-
-    systemd.network.netdevs = {
+    systemd.network.netdevs = tap_devices // {
       service = {
         netdevConfig = {
           Name = "service";
           Kind = "bridge";
-        };
-      };
-
-      tap1 = {
-        netdevConfig = {
-          Name = "tap1";
-          Kind = "tap";
-        };
-        tapConfig = {
-          User = "solo5";
-          Group = "solo5";
         };
       };
     };
