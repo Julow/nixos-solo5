@@ -72,7 +72,10 @@ let
 
   mk_service = { name, bin, ipv4, ports, mem, argv }@u:
     let
-      ipv4_args = [ "--ipv4=${ipv4}/24" "--ipv4-gateway=10.0.0.1" ];
+      ipv4_args = [
+        "--ipv4=${ipv4}/${toString conf.ipv4.subnet}"
+        "--ipv4-gateway=${conf.ipv4.gateway}"
+      ];
       nets = map ({ intf, ... }@p: [ "--net:${intf}=tap1" ]) ports;
       # TODO: Block devices: --block:$name=$block_file_dev
       # (optional) --block-sector-size:$name=$size
@@ -127,6 +130,18 @@ in {
         default = { };
         type = attrsOf (submodule [ unikernel_module ]);
       };
+
+      ipv4.gateway = mkOption {
+        type = str;
+        default = "10.0.0.1";
+        description = "Gateway for the unikernel to connect to the internet.";
+      };
+
+      ipv4.subnet = mkOption {
+        type = int;
+        default = 24;
+        description = "Subnet mask for every unikernels.";
+      };
     };
   };
 
@@ -148,7 +163,7 @@ in {
     systemd.network.enable = true;
 
     systemd.network.networks.service = {
-      address = [ "10.0.0.1/24" ];
+      address = [ "${conf.ipv4.gateway}/${toString conf.ipv4.subnet}" ];
       matchConfig = { Name = "service"; };
     };
 
