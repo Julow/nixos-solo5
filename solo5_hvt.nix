@@ -32,6 +32,28 @@ let
     };
   };
 
+  blocks_module = {
+    options = with types; {
+      name = mkOption {
+        type = str;
+        description = "Name of the block device inside the unikernel.";
+      };
+
+      path = mkOption {
+        type = str;
+        description =
+          "Path to the block device or file to attach. Make sure this is not a Nix path. A file is created at this location if it doesn't exist.";
+      };
+
+      sector_size = mkOption {
+        type = int;
+        default = 16384;
+        description =
+          "Sector size in byte. Must be a power of two greater than or equal to 512.";
+      };
+    };
+  };
+
   unikernel_module = {
     options = with types; {
       name = mkOption {
@@ -58,6 +80,12 @@ let
           "Ports the unikernel listen to. Each port is mapped to a named network interface inside the unikernel.";
       };
 
+      blocks = mkOption {
+        type = listOf (submodule [ blocks_module ]);
+        default = [ ];
+        description = "Block devices mounted into the unikernel.";
+      };
+
       mem = mkOption {
         type = int;
         default = 128;
@@ -71,18 +99,22 @@ let
   };
 
   services = listToAttrs (map_unikernels (i:
-    { name, bin, ipv4, ports, mem, argv }@u:
+    { name, bin, ipv4, ports, blocks, mem, argv }@u:
     let
       ipv4_args = [
         "--ipv4=${ipv4}/${toString conf.ipv4.subnet}"
         "--ipv4-gateway=${conf.ipv4.gateway}"
       ];
-      nets = map ({ intf, ... }@p: [ "--net:${intf}=${tap i}" ]) ports;
+      net_args = map ({ intf, ... }@p: "--net:${intf}=${tap i}") ports;
+      block_args = concatMap ({ name, path, sector_size }: [
+        "--block:${name}=${toString path}"
+        "--block-sector-size:${name}=${toString sector_size}"
+      ]) blocks;
       # TODO: Block devices: --block:$name=$block_file_dev
       # (optional) --block-sector-size:$name=$size
-      blocks = [ ];
-      args = [ "--mem=${toString mem}" ] ++ nets ++ blocks ++ [ "--" bin ]
-        ++ ipv4_args ++ argv;
+      args = [ "--mem=${toString mem}" ] ++ net_args ++ block_args
+        ++ [ "--" bin ] ++ ipv4_args ++ argv;
+
     in nameValuePair "solo5-${name}" {
       description = "Solo5 Unikernel ${name}";
       after = [ "syslog.target" "sys-subsystem-net-devices-tap1.device" ];
