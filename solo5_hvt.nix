@@ -51,6 +51,17 @@ let
         description =
           "Sector size in byte. Must be a power of two greater than or equal to 512.";
       };
+
+      initial_size = mkOption {
+        type = nullOr int;
+        default = null;
+        description = ''
+          Specify whether the file at 'path' should be created automatically
+          and its initial size. If set to 'null' (the default), the file is not
+          created automatically. No attempt is made to resize an existing
+          file.
+        '';
+      };
     };
   };
 
@@ -98,6 +109,18 @@ let
     };
   };
 
+  # Shell commands run at ExecStart that create block files if they don't exist
+  block_initial_create = ({ path, initial_size, ... }:
+    let p = escapeShellArg path;
+    in if initial_size == null then
+      [ ]
+    else
+      [
+        "if ! [[ -e ${p} ]]; then dd conv=excl bs=1M count=${
+          toString initial_size
+        } if=/dev/null of=${p}; fi"
+      ]);
+
   services = listToAttrs (map_unikernels (i:
     { name, bin, ipv4, ports, blocks, mem, argv }@u:
     let
@@ -106,7 +129,7 @@ let
         "--ipv4-gateway=${conf.ipv4.gateway}"
       ];
       net_args = map ({ intf, ... }@p: "--net:${intf}=${tap i}") ports;
-      block_args = concatMap ({ name, path, sector_size }: [
+      block_args = concatMap ({ name, path, sector_size, ... }: [
         "--block:${name}=${toString path}"
         "--block-sector-size:${name}=${toString sector_size}"
       ]) blocks;
@@ -126,6 +149,7 @@ let
         User = "solo5";
         Group = "solo5";
         ExecStart = ''
+          ${concatStringsSep "\n" (concatMap block_initial_create blocks)}
           ${solo5}/bin/solo5-hvt ${escapeShellArgs args}
         '';
         # ExecStartPre = "";
