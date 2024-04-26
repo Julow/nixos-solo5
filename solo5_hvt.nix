@@ -4,8 +4,7 @@ with lib;
 
 let
 
-  # solo5 = pkgs.solo5.override { qemu = pkgs.qemu.override { guestAgentSupport = false; }; };
-  solo5 = "/nix/store/cv8zazrl26i903abn3j7q6szyjj6xix1-solo5-0.7.4";
+  solo5 = pkgs.solo5.override { qemu = pkgs.qemu_kvm; };
 
   ports_module = { ... }: {
     options = with types; {
