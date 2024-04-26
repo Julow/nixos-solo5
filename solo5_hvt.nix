@@ -4,7 +4,16 @@ with lib;
 
 let
 
-  solo5 = pkgs.solo5.override { qemu = pkgs.qemu_kvm; };
+  solo5 = (pkgs.solo5.override { qemu = pkgs.qemu_kvm; }).overrideAttrs (o:
+    o // rec {
+      version = "0.7.5";
+      src = pkgs.fetchurl {
+        url =
+          "https://github.com/Solo5/solo5/releases/download/v${version}/solo5-v${version}.tar.gz";
+        sha256 = "sha256-viwrS9lnaU8sTGuzK/+L/PlMM/xRRtgVuK5pixVeDEw=";
+      };
+      doCheck = false;
+    });
 
   ports_module = { ... }: {
     options = with types; {
