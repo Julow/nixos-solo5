@@ -139,7 +139,7 @@ let
 
     in nameValuePair "solo5-${name}" {
       description = "Solo5 Unikernel ${name}";
-      after = [ "syslog.target" "sys-subsystem-net-devices-tap1.device" ];
+      after = [ "sys-subsystem-net-devices-tap1.device" ];
       wantedBy = [ "multi-user.target" ];
       requires = [ "sys-subsystem-net-devices-tap1.device" ];
       # TODO: Assign CPU
@@ -147,7 +147,7 @@ let
         Type = "simple";
         User = "solo5";
         Group = "solo5";
-        ExecStart = ''
+        ExecStart = pkgs.writeShellScript "solo5-${name}-start" ''
           ${concatStringsSep "\n" (concatMap block_initial_create blocks)}
           ${solo5}/bin/solo5-hvt ${escapeShellArgs args}
         '';
