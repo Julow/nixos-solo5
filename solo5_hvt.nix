@@ -95,6 +95,7 @@ let
 
       ports = mkOption {
         type = listOf (submodule [ ports_module ]);
+        default = [ ];
         description =
           "Ports the unikernel listen to. Each port is mapped to a named network interface inside the unikernel.";
       };
